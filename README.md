@@ -2,12 +2,16 @@
 
 A Go library for programmatically editing Protocol Buffer (`.proto`) files while preserving formatting and comments.
 
-## Functions
+## API
 
-- `AppendToService` – Add new RPC definitions to existing service blocks
-- `AppendToMessage` – Add fields or nested types to message blocks
-- `AppendToEnum` – Add new values to enum definitions
-- `Append` – Add new top-level declarations (messages, enums, services)
+| Method | Appends to |
+|--------|------------|
+| `Append.ToService(name, content)` | Service body (RPCs, options) |
+| `Append.ToMessage(name, content)` | Message body (fields, nested types) |
+| `Append.ToEnum(name, content)` | Enum body (values) |
+| `Append.ToFile(content)` | End of file (top-level declarations) |
+
+All methods reparse the AST after modification, enabling chained operations.
 
 > **Comment preservation** – All original comments and formatting are retained
 
@@ -20,42 +24,33 @@ go get github.com/whhygee/protoedit
 ## Usage
 
 ```go
-package main
-
-import (
-    "fmt"
-    "github.com/whhygee/protoedit"
-)
-
-const proto = `syntax = "proto3";
-
-service MyService {
-  rpc GetUser(GetUserRequest) returns (GetUserResponse) {}
-}
-`
-
-func main() {
-    editor, err := protoedit.New(proto)
-    if err != nil {
-        panic(err)
-    }
-
-    // Add a new RPC to the service
-    editor.AppendToService("MyService", `  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {}`)
-
-    // Add new message definitions
-    editor.Append(`message CreateUserRequest {
-  string name = 1;
+editor, err := protoedit.New(protoContent)
+if err != nil {
+    return err
 }
 
-message CreateUserResponse {
-  string id = 1;
-}`)
+// Add a new RPC to a service
+editor.Append.ToService("UserService", rpcDefinition)
 
-    fmt.Println(editor.String())
-}
+// Add a field to a message
+editor.Append.ToMessage("CreateUserRequest", fieldDefinition)
+
+// Add a value to an enum
+editor.Append.ToEnum("Status", enumValueDefinition)
+
+// Add new top-level definitions
+editor.Append.ToFile(messageDefinitions)
+
+result := editor.String()
 ```
 
 ## How It Works
 
 `protoedit` uses [bufbuild/protocompile](https://github.com/bufbuild/protocompile) to parse proto files and extract position information. Edits are performed by inserting content at the correct byte offsets, then re-parsing to update positions for subsequent modifications.
+
+Chained operations work correctly:
+
+```go
+editor.Append.ToFile(newMessage)
+editor.Append.ToMessage("NewMessage", field)  // AST is fresh
+```
