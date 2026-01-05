@@ -4,99 +4,64 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/whhygee/protoedit/fixtures"
+	"github.com/whhygee/protoedit/testdata"
 )
 
 func TestNew(t *testing.T) {
-	type args struct {
-		proto string
-	}
 	tests := []struct {
-		name string
-		args args
+		name    string
+		proto   string
+		wantErr bool
 	}{
 		{
-			name: "valid proto",
-			args: args{
-				proto: fixtures.TestProto,
-			},
+			name:    "valid proto",
+			proto:   testdata.TestProto,
+			wantErr: false,
 		},
 		{
-			name: "empty proto",
-			args: args{
-				proto: "",
-			},
+			name:    "empty proto",
+			proto:   "",
+			wantErr: false,
 		},
 		{
-			name: "minimal proto",
-			args: args{
-				proto: fixtures.TestProtoMinimal,
-			},
+			name:    "minimal proto",
+			proto:   testdata.TestProtoMinimal,
+			wantErr: false,
+		},
+		{
+			name:    "invalid proto",
+			proto:   testdata.TestProtoInvalid,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Errorf("New() error = %v", err)
+			editor, err := New(tt.proto)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if editor == nil {
+			if !tt.wantErr && editor == nil {
 				t.Error("New() returned nil editor")
 			}
 		})
 	}
 }
 
-func TestNew_Error(t *testing.T) {
-	type args struct {
-		proto string
-	}
-	tests := []struct {
-		name string
-		args args
-	}{
-		{
-			name: "invalid proto syntax",
-			args: args{
-				proto: fixtures.TestProtoInvalid,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := New(tt.args.proto)
-			if err == nil {
-				t.Error("New() expected error, got nil")
-			}
-		})
-	}
-}
-
 func TestAppendToService(t *testing.T) {
-	type args struct {
+	tests := []struct {
+		name        string
 		proto       string
 		serviceName string
 		content     string
-	}
-	tests := []struct {
-		name  string
-		args  args
-		check func(t *testing.T, result string)
+		check       func(t *testing.T, result string)
 	}{
 		{
-			name: "appends RPC to end of service",
-			args: args{
-				proto:       fixtures.TestProto,
-				serviceName: "TestService",
-				content:     fixtures.TestRPCContent,
-			},
+			name:        "appends RPC to end of service",
+			proto:       testdata.TestProto,
+			serviceName: "TestService",
+			content:     testdata.TestRPCContent,
 			check: func(t *testing.T, result string) {
 				if !strings.Contains(result, "rpc CreateBar") {
 					t.Error("result should contain the new RPC")
@@ -118,12 +83,10 @@ func TestAppendToService(t *testing.T) {
 			},
 		},
 		{
-			name: "preserves all comments",
-			args: args{
-				proto:       fixtures.TestProtoWithComments,
-				serviceName: "MyService",
-				content:     "  rpc NewRPC(NewRequest) returns (NewResponse) {}",
-			},
+			name:        "preserves all comments",
+			proto:       testdata.TestProtoWithComments,
+			serviceName: "MyService",
+			content:     "  rpc NewRPC(NewRequest) returns (NewResponse) {}",
 			check: func(t *testing.T, result string) {
 				comments := []string{
 					"// File comment",
@@ -142,15 +105,13 @@ func TestAppendToService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			editor, err := New(tt.args.proto)
+			editor, err := New(tt.proto)
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
 			}
 
-			if err := editor.AppendToService(tt.args.serviceName, tt.args.content); err != nil {
-				t.Fatalf("AppendToService() error = %v", err)
+			if err := editor.Append.ToService(tt.serviceName, tt.content); err != nil {
+				t.Fatalf("ToService() error = %v", err)
 			}
 
 			tt.check(t, editor.String())
@@ -159,324 +120,145 @@ func TestAppendToService(t *testing.T) {
 }
 
 func TestAppendToService_Error(t *testing.T) {
-	type args struct {
-		proto       string
-		serviceName string
-		content     string
-	}
-	tests := []struct {
-		name string
-		args args
-	}{
-		{
-			name: "service not found",
-			args: args{
-				proto:       fixtures.TestProto,
-				serviceName: "NonExistentService",
-				content:     fixtures.TestRPCContent,
-			},
-		},
+	editor, err := New(testdata.TestProto)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
-
-			if err := editor.AppendToService(tt.args.serviceName, tt.args.content); err == nil {
-				t.Error("AppendToService() expected error, got nil")
-			}
-		})
+	if err := editor.Append.ToService("NonExistentService", testdata.TestRPCContent); err == nil {
+		t.Error("ToService() expected error, got nil")
 	}
 }
 
 func TestAppendToMessage(t *testing.T) {
-	type args struct {
-		proto       string
-		messageName string
-		content     string
-	}
-	tests := []struct {
-		name  string
-		args  args
-		check func(t *testing.T, result string)
-	}{
-		{
-			name: "appends field to end of message",
-			args: args{
-				proto:       fixtures.TestProto,
-				messageName: "GetFooRequest",
-				content:     fixtures.TestFieldContent,
-			},
-			check: func(t *testing.T, result string) {
-				if !strings.Contains(result, "extra_field") {
-					t.Error("result should contain the new field")
-				}
-
-				fieldPos := strings.Index(result, "extra_field")
-				idFieldPos := strings.Index(result, "string id = 1")
-				if fieldPos < idFieldPos {
-					t.Error("extra_field should be after id")
-				}
-
-				if _, err := New(result); err != nil {
-					t.Errorf("result should be valid proto: %v", err)
-				}
-			},
-		},
+	editor, err := New(testdata.TestProto)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	if err := editor.Append.ToMessage("GetFooRequest", testdata.TestFieldContent); err != nil {
+		t.Fatalf("ToMessage() error = %v", err)
+	}
 
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
+	result := editor.String()
 
-			if err := editor.AppendToMessage(tt.args.messageName, tt.args.content); err != nil {
-				t.Fatalf("AppendToMessage() error = %v", err)
-			}
+	if !strings.Contains(result, "extra_field") {
+		t.Error("result should contain the new field")
+	}
 
-			tt.check(t, editor.String())
-		})
+	fieldPos := strings.Index(result, "extra_field")
+	idFieldPos := strings.Index(result, "string id = 1")
+	if fieldPos < idFieldPos {
+		t.Error("extra_field should be after id")
+	}
+
+	if _, err := New(result); err != nil {
+		t.Errorf("result should be valid proto: %v", err)
 	}
 }
 
 func TestAppendToMessage_Error(t *testing.T) {
-	type args struct {
-		proto       string
-		messageName string
-		content     string
-	}
-	tests := []struct {
-		name string
-		args args
-	}{
-		{
-			name: "message not found",
-			args: args{
-				proto:       fixtures.TestProto,
-				messageName: "NonExistentMessage",
-				content:     fixtures.TestFieldContent,
-			},
-		},
+	editor, err := New(testdata.TestProto)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
-
-			if err := editor.AppendToMessage(tt.args.messageName, tt.args.content); err == nil {
-				t.Error("AppendToMessage() expected error, got nil")
-			}
-		})
+	if err := editor.Append.ToMessage("NonExistentMessage", testdata.TestFieldContent); err == nil {
+		t.Error("ToMessage() expected error, got nil")
 	}
 }
 
 func TestAppendToEnum(t *testing.T) {
-	type args struct {
-		proto    string
-		enumName string
-		content  string
-	}
-	tests := []struct {
-		name  string
-		args  args
-		check func(t *testing.T, result string)
-	}{
-		{
-			name: "appends value to end of enum",
-			args: args{
-				proto:    fixtures.TestProto,
-				enumName: "Status",
-				content:  fixtures.TestEnumValueContent,
-			},
-			check: func(t *testing.T, result string) {
-				if !strings.Contains(result, "STATUS_PENDING") {
-					t.Error("result should contain the new enum value")
-				}
-
-				pendingPos := strings.Index(result, "STATUS_PENDING")
-				activePos := strings.Index(result, "STATUS_ACTIVE")
-				if pendingPos < activePos {
-					t.Error("STATUS_PENDING should be after STATUS_ACTIVE")
-				}
-
-				if _, err := New(result); err != nil {
-					t.Errorf("result should be valid proto: %v", err)
-				}
-			},
-		},
+	editor, err := New(testdata.TestProto)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	if err := editor.Append.ToEnum("Status", testdata.TestEnumValueContent); err != nil {
+		t.Fatalf("ToEnum() error = %v", err)
+	}
 
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
+	result := editor.String()
 
-			if err := editor.AppendToEnum(tt.args.enumName, tt.args.content); err != nil {
-				t.Fatalf("AppendToEnum() error = %v", err)
-			}
+	if !strings.Contains(result, "STATUS_PENDING") {
+		t.Error("result should contain the new enum value")
+	}
 
-			tt.check(t, editor.String())
-		})
+	pendingPos := strings.Index(result, "STATUS_PENDING")
+	activePos := strings.Index(result, "STATUS_ACTIVE")
+	if pendingPos < activePos {
+		t.Error("STATUS_PENDING should be after STATUS_ACTIVE")
+	}
+
+	if _, err := New(result); err != nil {
+		t.Errorf("result should be valid proto: %v", err)
 	}
 }
 
 func TestAppendToEnum_Error(t *testing.T) {
-	type args struct {
-		proto    string
-		enumName string
-		content  string
-	}
-	tests := []struct {
-		name string
-		args args
-	}{
-		{
-			name: "enum not found",
-			args: args{
-				proto:    fixtures.TestProto,
-				enumName: "NonExistentEnum",
-				content:  fixtures.TestEnumValueContent,
-			},
-		},
+	editor, err := New(testdata.TestProto)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
-
-			if err := editor.AppendToEnum(tt.args.enumName, tt.args.content); err == nil {
-				t.Error("AppendToEnum() expected error, got nil")
-			}
-		})
+	if err := editor.Append.ToEnum("NonExistentEnum", testdata.TestEnumValueContent); err == nil {
+		t.Error("ToEnum() expected error, got nil")
 	}
 }
 
-func TestAppend(t *testing.T) {
-	type args struct {
-		proto   string
-		content string
-	}
-	tests := []struct {
-		name  string
-		args  args
-		check func(t *testing.T, result string)
-	}{
-		{
-			name: "appends message to end of file",
-			args: args{
-				proto:   fixtures.TestProto,
-				content: fixtures.TestMessageContent,
-			},
-			check: func(t *testing.T, result string) {
-				if !strings.Contains(result, "message CreateBarRequest") {
-					t.Error("result should contain CreateBarRequest")
-				}
-
-				statusEnumPos := strings.Index(result, "enum Status")
-				createBarRequestPos := strings.Index(result, "message CreateBarRequest")
-				if createBarRequestPos < statusEnumPos {
-					t.Error("new message should be after original content")
-				}
-
-				if _, err := New(result); err != nil {
-					t.Errorf("result should be valid proto: %v", err)
-				}
-			},
-		},
+func TestAppendToFile(t *testing.T) {
+	editor, err := New(testdata.TestProto)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	if err := editor.Append.ToFile(testdata.TestMessageContent); err != nil {
+		t.Fatalf("ToFile() error = %v", err)
+	}
+	result := editor.String()
 
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
+	if !strings.Contains(result, "message CreateBarRequest") {
+		t.Error("result should contain CreateBarRequest")
+	}
 
-			editor.Append(tt.args.content)
-			tt.check(t, editor.String())
-		})
+	statusEnumPos := strings.Index(result, "enum Status")
+	createBarRequestPos := strings.Index(result, "message CreateBarRequest")
+	if createBarRequestPos < statusEnumPos {
+		t.Error("new message should be after original content")
+	}
+
+	if _, err := New(result); err != nil {
+		t.Errorf("result should be valid proto: %v", err)
 	}
 }
 
 func TestCombinedOperations(t *testing.T) {
-	type args struct {
-		proto       string
-		serviceName string
-		rpcContent  string
-		msgContent  string
-	}
-	tests := []struct {
-		name  string
-		args  args
-		check func(t *testing.T, result string)
-	}{
-		{
-			name: "add RPC and messages",
-			args: args{
-				proto:       fixtures.TestProto,
-				serviceName: "TestService",
-				rpcContent:  fixtures.TestRPCContent,
-				msgContent:  fixtures.TestMessagesContent,
-			},
-			check: func(t *testing.T, result string) {
-				wantContains := []string{
-					"rpc CreateBar",
-					"message CreateBarRequest",
-					"message CreateBarResponse",
-				}
-				for _, want := range wantContains {
-					if !strings.Contains(result, want) {
-						t.Errorf("result should contain %q", want)
-					}
-				}
-
-				if _, err := New(result); err != nil {
-					t.Errorf("result should be valid proto: %v", err)
-				}
-			},
-		},
+	editor, err := New(testdata.TestProto)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	if err := editor.Append.ToService("TestService", testdata.TestRPCContent); err != nil {
+		t.Fatalf("ToService() error = %v", err)
+	}
 
-			editor, err := New(tt.args.proto)
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
+	if err := editor.Append.ToFile(testdata.TestMessagesContent); err != nil {
+		t.Fatalf("ToFile() error = %v", err)
+	}
+	result := editor.String()
 
-			if err := editor.AppendToService(tt.args.serviceName, tt.args.rpcContent); err != nil {
-				t.Fatalf("AppendToService() error = %v", err)
-			}
+	wantContains := []string{
+		"rpc CreateBar",
+		"message CreateBarRequest",
+		"message CreateBarResponse",
+	}
+	for _, want := range wantContains {
+		if !strings.Contains(result, want) {
+			t.Errorf("result should contain %q", want)
+		}
+	}
 
-			editor.Append(tt.args.msgContent)
-			tt.check(t, editor.String())
-		})
+	if _, err := New(result); err != nil {
+		t.Errorf("result should be valid proto: %v", err)
 	}
 }

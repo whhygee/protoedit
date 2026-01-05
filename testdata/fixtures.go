@@ -1,4 +1,4 @@
-package fixtures
+package testdata
 
 const (
 	TestProto = `syntax = "proto3";
