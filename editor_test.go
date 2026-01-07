@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/whhygee/protoedit/testdata"
 )
 
@@ -232,33 +233,135 @@ func TestAppendToFile(t *testing.T) {
 	}
 }
 
-func TestCombinedOperations(t *testing.T) {
-	editor, err := New(testdata.TestProto)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
+func TestIndentation(t *testing.T) {
+	tests := []struct {
+		name  string
+		proto string
+		op    func(*Editor) error
+		want  string
+	}{
+		{
+			name: "empty block gets indented",
+			proto: `syntax = "proto3";
+message Foo {}`,
+			op: func(e *Editor) error {
+				return e.Append.ToMessage("Foo", "string name = 1;")
+			},
+			want: `syntax = "proto3";
+message Foo {
+  string name = 1;
+}`,
+		},
+		{
+			name: "closing brace on own line",
+			proto: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+}`,
+			op: func(e *Editor) error {
+				return e.Append.ToService("Svc", "rpc Create(Req) returns (Res) {}")
+			},
+			want: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+
+	rpc Create(Req) returns (Res) {}
+}`,
+		},
+		{
+			name: "over-indented content normalized",
+			proto: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+}`,
+			op: func(e *Editor) error {
+				return e.Append.ToService("Svc", "\t\t\t\trpc Create(Req) returns (Res) {}")
+			},
+			want: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+
+	rpc Create(Req) returns (Res) {}
+}`,
+		},
+		{
+			name: "under-indented content normalized",
+			proto: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+}`,
+			op: func(e *Editor) error {
+				return e.Append.ToService("Svc", "rpc Create(Req) returns (Res) {}")
+			},
+			want: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+
+	rpc Create(Req) returns (Res) {}
+}`,
+		},
+		{
+			name: "nested message appends",
+			proto: `syntax = "proto3";
+message Foo {
+	message Bar {}
+}`,
+			op: func(e *Editor) error {
+				if err := e.Append.ToMessage("Bar", "string a = 1;"); err != nil {
+					return err
+				}
+				return e.Append.ToMessage("Foo", "string b = 2;")
+			},
+			want: `syntax = "proto3";
+message Foo {
+	message Bar {
+		string a = 1;
 	}
 
-	if err := editor.Append.ToService("TestService", testdata.TestRPCContent); err != nil {
-		t.Fatalf("ToService() error = %v", err)
+	string b = 2;
+}`,
+		},
+		{
+			name: "sequential service appends",
+			proto: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+}`,
+			op: func(e *Editor) error {
+				if err := e.Append.ToService("Svc", "  rpc One(Req) returns (Res) {}"); err != nil {
+					return err
+				}
+				return e.Append.ToService("Svc", "rpc Two(Req) returns (Res) {}")
+			},
+			want: `syntax = "proto3";
+service Svc {
+	rpc Get(Req) returns (Res) {}
+
+	rpc One(Req) returns (Res) {}
+
+	rpc Two(Req) returns (Res) {}
+}`,
+		},
 	}
 
-	if err := editor.Append.ToFile(testdata.TestMessagesContent); err != nil {
-		t.Fatalf("ToFile() error = %v", err)
-	}
-	result := editor.String()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			editor, err := New(tt.proto)
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
 
-	wantContains := []string{
-		"rpc CreateBar",
-		"message CreateBarRequest",
-		"message CreateBarResponse",
-	}
-	for _, want := range wantContains {
-		if !strings.Contains(result, want) {
-			t.Errorf("result should contain %q", want)
-		}
-	}
+			if err := tt.op(editor); err != nil {
+				t.Fatalf("op() error = %v", err)
+			}
 
-	if _, err := New(result); err != nil {
-		t.Errorf("result should be valid proto: %v", err)
+			if diff := cmp.Diff(tt.want, editor.String()); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+
+			if _, err := New(editor.String()); err != nil {
+				t.Errorf("result should be valid proto: %v", err)
+			}
+		})
 	}
 }
